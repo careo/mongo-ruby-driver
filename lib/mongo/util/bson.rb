@@ -63,7 +63,8 @@ class BSON
     buf.put_array(to_utf8(val.to_s).unpack("C*") + [0])
   end
 
-  def initialize()
+  def initialize(opts={})
+    @symbolize_keys = true if opts[:symbolize_keys]
     @buf = ByteBuffer.new
   end
 
@@ -156,17 +157,18 @@ class BSON
 
   begin
     require 'mongo_ext/cbson'
-    def deserialize(buf=nil)
+    def deserialize(buf=nil, symbolize_keys=false)
       if buf.is_a? String
         @buf = ByteBuffer.new(buf) if buf
       else
         @buf = ByteBuffer.new(buf.to_a) if buf
       end
       @buf.rewind
-      CBson.deserialize(@buf.to_s)
+      CBson.deserialize(@buf.to_s, symbolize_keys)
     end
   rescue LoadError
-    def deserialize(buf=nil)
+    def deserialize(buf=nil, symbolize_keys=false)
+      @symbolize_keys = symbolize_keys
       # If buf is nil, use @buf, assumed to contain already-serialized BSON.
       # This is only true during testing.
       if buf.is_a? String
@@ -185,7 +187,11 @@ class BSON
           doc[key] = deserialize_string_data(@buf)
         when SYMBOL
           key = deserialize_cstr(@buf)
-          doc[key] = deserialize_string_data(@buf).intern
+          if @symbolize_keys
+            doc[key.to_sym] = deserialize_string_data(@buf).intern
+          else
+            doc[key] = deserialize_string_data(@buf).intern
+          end
         when NUMBER
           key = deserialize_cstr(@buf)
           doc[key] = deserialize_number_data(@buf)

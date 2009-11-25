@@ -156,6 +156,14 @@ class BSONTest < Test::Unit::TestCase
     assert_equal :foo, doc2['sym']
   end
 
+  def test_symbolize_keys
+    doc = {'sym' => :foo}
+    @b = BSON.new
+    @b.serialize(doc)
+    doc2 = @b.deserialize(nil,true)
+    assert_equal [:sym], doc2.keys
+  end
+
   def test_binary
     bin = Binary.new
     'binstring'.each_byte { |b| bin.put(b) }

@@ -106,7 +106,7 @@ static int cmp_char(const void* a, const void* b) {
 
 static void write_doc(bson_buffer* buffer, VALUE hash, VALUE check_keys);
 static int write_element(VALUE key, VALUE value, VALUE extra);
-static VALUE elements_to_hash(const char* buffer, int max);
+static VALUE elements_to_hash(const char* buffer, int max, int symbolize_keys);
 
 static bson_buffer* buffer_new(void) {
     bson_buffer* buffer;
@@ -522,7 +522,7 @@ static VALUE get_value(const char* buffer, int* position, int type) {
                 argv[1] = get_value(buffer, &offset, (int)id_type);
                 value = rb_class_new_instance(2, argv, DBRef);
             } else {
-                value = elements_to_hash(buffer + *position + 4, size - 5);
+                value = elements_to_hash(buffer + *position + 4, size - 5, 0);
             }
             *position += size;
             break;
@@ -672,7 +672,7 @@ static VALUE get_value(const char* buffer, int* position, int type) {
             *position += code_length + 1;
 
             memcpy(&scope_size, buffer + *position, 4);
-            scope = elements_to_hash(buffer + *position + 4, scope_size - 5);
+            scope = elements_to_hash(buffer + *position + 4, scope_size - 5, 0);
             *position += scope_size;
 
             argv[0] = code;
@@ -715,13 +715,21 @@ static VALUE get_value(const char* buffer, int* position, int type) {
     return value;
 }
 
-static VALUE elements_to_hash(const char* buffer, int max) {
+static VALUE elements_to_hash(const char* buffer, int max, int symbolize_keys) {
     VALUE hash = rb_class_new_instance(0, NULL, OrderedHash);
     int position = 0;
     while (position < max) {
         int type = (int)buffer[position++];
         int name_length = strlen(buffer + position);
-        VALUE name = STR_NEW(buffer + position, name_length);
+        VALUE name;
+        if (symbolize_keys) {
+            char buf[name_length+1];
+            memcpy(buf, buffer + position, name_length);
+            buf[name_length] = 0;
+            name = ID2SYM(rb_intern(buf));
+        } else {
+            name = STR_NEW(buffer + position, name_length);
+        }
         VALUE value;
         position += name_length + 1;
         value = get_value(buffer, &position, type);
@@ -730,7 +738,12 @@ static VALUE elements_to_hash(const char* buffer, int max) {
     return hash;
 }
 
-static VALUE method_deserialize(VALUE self, VALUE bson) {
+static VALUE method_deserialize(int argc, VALUE *argv, VALUE self) {
+    VALUE bson;
+    VALUE symbolize_keys = 0;
+
+    rb_scan_args(argc, argv, "11", &bson, &symbolize_keys);
+    
     const char* buffer = RSTRING_PTR(bson);
     int remaining = RSTRING_LEN(bson);
 
@@ -738,7 +751,7 @@ static VALUE method_deserialize(VALUE self, VALUE bson) {
     buffer += 4;
     remaining -= 5;
 
-    return elements_to_hash(buffer, remaining);
+    return elements_to_hash(buffer, remaining, symbolize_keys);
 }
 
 
@@ -813,7 +826,7 @@ void Init_cbson() {
 
     CBson = rb_define_module("CBson");
     rb_define_module_function(CBson, "serialize", method_serialize, 2);
-    rb_define_module_function(CBson, "deserialize", method_deserialize, 1);
+    rb_define_module_function(CBson, "deserialize", method_deserialize, -1);
 
     rb_require("digest/md5");
     Digest = rb_const_get(rb_cObject, rb_intern("Digest"));

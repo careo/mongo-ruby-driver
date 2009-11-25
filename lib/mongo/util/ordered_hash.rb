@@ -90,7 +90,7 @@ class OrderedHash < Hash
 
     def inspect
       str = '{'
-      str << (@ordered_keys || []).collect { |k| "\"#{k}\"=>#{self.[](k).inspect}" }.join(", ")
+      str << (@ordered_keys || []).collect { |k| "#{k.inspect}=>#{self.[](k).inspect}" }.join(", ")
       str << '}'
     end
 
